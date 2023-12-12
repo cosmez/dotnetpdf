@@ -30,7 +30,7 @@ dotnetpdf split --input <input.pdf>
 
 # Split a PDF specifying output name
 dotnetpdf split --input <input.pdf> -names '{page}_{original}_pdf'
- 
+ [README.md](..%2FREADME.md)
 # Split a PDF using bookmarks as output names, specifying range
 dotnetpdf split --input <input.pdf> --use-bookmarks --range 1-5
 

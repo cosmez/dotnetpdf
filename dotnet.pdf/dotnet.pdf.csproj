@@ -6,11 +6,25 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <PackageId>Emm.DotnetPdf</PackageId>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackAsTool>true</PackAsTool>
         <ToolCommandName>dotnetpdf</ToolCommandName>
         <PackageOutputPath>./scripts/output/nupkg</PackageOutputPath>
-
     </PropertyGroup>
+
+    <PropertyGroup>
+        <PackageDescription>DotNetPdf  [merge, split, convert, extract PDF documents]</PackageDescription>
+        <PackageReleaseNotes>Initial Version, SEE README</PackageReleaseNotes>
+        <PackageProjectUrl>https://github.com/cosmez/dotnetpdf</PackageProjectUrl>
+        <Authors>Cosme Zamudio</Authors>
+        <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="\"/>
+    </ItemGroup>
+
 
     <ItemGroup>
       <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.649" />
