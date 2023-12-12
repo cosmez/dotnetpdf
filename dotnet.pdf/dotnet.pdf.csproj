@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFrameworks>net6.0;net7.0;net8.0</TargetFrameworks>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <PackAsTool>true</PackAsTool>
+        <ToolCommandName>dotnetpdf</ToolCommandName>
+        <PackageOutputPath>./scripts/output/nupkg</PackageOutputPath>
+
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.649" />
+      <PackageReference Include="PDFiumCore" Version="121.0.6150" />
+      <PackageReference Include="SixLabors.ImageSharp" Version="3.1.1" />
+      <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+    </ItemGroup>
+
+</Project>
