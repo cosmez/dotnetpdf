@@ -13,6 +13,15 @@ A .NET-based tool for PDF processing, `dotnetpdf` draws  inspiration from `PDFtk
 - `text`: Extract text from a PDF.
 - `bookmarks`: Extract PDF bookmarks (outlines).
 - `info`: Retrieves PDF metadata.
+- `rotate`: Rotate PDF pages by 90, 180, or 270 degrees.
+- `remove`: Remove specific pages from a PDF.
+- `insert`: Insert blank pages into a PDF at specified positions.
+- `reorder`: Reorder PDF pages according to a specified sequence.
+- `list-attachments`: List PDF attachments with metadata information.
+- `extract-attachments`: Extract PDF attachments to disk.
+- `list-objects`: List all graphical objects on a given page.
+- `list-forms`: List all interactive form fields in a document.
+- `watermark`: Add a text or image watermark to all pages of a document.
 
 ## Installation
 
@@ -30,7 +39,7 @@ dotnetpdf split --input <input.pdf>
 
 # Split a PDF specifying output name
 dotnetpdf split --input <input.pdf> -names '{page}_{original}_pdf'
- 
+ [README.md](..%2FREADME.md)
 # Split a PDF using bookmarks as output names, specifying range
 dotnetpdf split --input <input.pdf> --use-bookmarks --range 1-5
 
@@ -60,6 +69,48 @@ dotnetpdf bookmarks --input <input.pdf>
 
 # Extract PDF Information
 dotnetpdf info --input <input.pdf> --format json
+
+# Rotate PDF pages (90, 180, or 270 degrees)
+dotnetpdf rotate --input <input.pdf> --output <rotated.pdf> --rotation 180
+
+# Rotate specific pages only
+dotnetpdf rotate --input <input.pdf> --output <rotated.pdf> --range 1-3 --rotation 90
+
+# Remove specific pages from PDF
+dotnetpdf remove --input <input.pdf> --output <cleaned.pdf> --pages 2,4,6
+
+# Insert blank pages at specified positions
+dotnetpdf insert --input <input.pdf> --output <expanded.pdf> --positions 1:2,5:1
+
+# Insert blank pages with custom dimensions (in points)
+dotnetpdf insert --input <input.pdf> --output <expanded.pdf> --positions 3:1 --width 595 --height 842
+
+# Reorder PDF pages
+dotnetpdf reorder --input <input.pdf> --output <reordered.pdf> --order 3,1,2,4
+
+# List PDF attachments
+dotnetpdf list-attachments --input <input.pdf>
+
+# List PDF attachments in JSON format
+dotnetpdf list-attachments --input <input.pdf> --format json
+
+# Extract all PDF attachments
+dotnetpdf extract-attachments --input <input.pdf> --output <output-directory>
+
+# Extract specific attachment by index
+dotnetpdf extract-attachments --input <input.pdf> --output <output-directory> --index 0
+
+# List all objects on page 1
+dotnetpdf list-objects --input <input.pdf> --page 1
+
+# List all form fields in a document as JSON
+dotnetpdf list-forms --input <input.pdf> --format json
+
+# Add a text watermark
+dotnetpdf watermark --input <input.pdf> --output <watermarked.pdf> --text "CONFIDENTIAL"
+
+# Add an image watermark with custom options
+dotnetpdf watermark --input <input.pdf> --output <watermarked.pdf> --image <logo.png> --scale 0.5 --opacity 128
 
 # Print Help
 dotnetpdf --help
