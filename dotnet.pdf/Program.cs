@@ -1,17 +1,99 @@
-﻿using System.CommandLine;
-using System.Text.Json;
+using System.CommandLine;
 using PDFiumCore;
-using SixLabors.ImageSharp.Processing;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
+using System.CommandLine.Invocation;
 
 namespace dotnet.pdf;
 
-
 class Program
 {
-    private const string Version = "v0.3";
+    private const string Version = "v0.4";
+    private static ServiceProvider _serviceProvider = null!;
+    private static CommandsHandler _commandHandler = null!;
+    private static MoreCommandsHandler _moreCommandHandler = null!;
+
     static async Task<int> Main(string[] args)
     {
-        fpdfview.FPDF_InitLibrary();
+        // Initialize logging and services
+        _serviceProvider = ConfigureServices();
+        _commandHandler = _serviceProvider.GetService<CommandsHandler>()!;
+        _moreCommandHandler = _serviceProvider.GetService<MoreCommandsHandler>()!;
+
+        try
+        {
+            fpdfview.FPDF_InitLibrary();
+
+            var rootCommand = new RootCommand($"DotNet.Pdf {Version} [merge, split, convert, extract PDF documents and pages]");
+
+            // Configure commands
+            ConfigureSplitCommand(rootCommand);
+            ConfigureMergeCommand(rootCommand);
+            ConfigureConvertCommand(rootCommand);
+            ConfigureImageToPdfCommand(rootCommand);
+            ConfigureTextCommand(rootCommand);
+            ConfigureBookmarksCommand(rootCommand);
+            ConfigureInfoCommand(rootCommand);
+            ConfigureRotateCommand(rootCommand);
+            ConfigureRemoveCommand(rootCommand);
+            ConfigureInsertCommand(rootCommand);
+            ConfigureReorderCommand(rootCommand);
+            ConfigureListAttachmentsCommand(rootCommand);
+            ConfigureExtractAttachmentsCommand(rootCommand);
+            ConfigureListPageObjectsCommand(rootCommand);
+            ConfigureListFormFieldsCommand(rootCommand);
+            ConfigureWatermarkCommand(rootCommand);
+
+            rootCommand.SetHandler(() =>
+            {
+                Console.WriteLine($"DotNet.Pdf  {Version} [merge, split, convert, extract PDF documents and pages]");
+            });
+
+            int retCode = await rootCommand.InvokeAsync(args);
+            return retCode;
+        }
+        catch (Exception ex)
+        {
+            var logger = _serviceProvider.GetService<ILogger<Program>>();
+            logger?.LogError(ex, "Fatal error occurred during application execution");
+            Console.WriteLine($"Fatal error: {ex.Message}");
+            return -1;
+        }
+        finally
+        {
+            try
+            {
+                fpdfview.FPDF_DestroyLibrary();
+            }
+            catch (Exception ex)
+            {
+                var logger = _serviceProvider.GetService<ILogger<Program>>();
+                logger?.LogError(ex, "Error destroying PDFium library");
+            }
+            finally
+            {
+                await _serviceProvider.DisposeAsync();
+            }
+        }
+    }
+
+    private static ServiceProvider ConfigureServices()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(builder =>
+        {
+            builder.AddConsole()
+                   .SetMinimumLevel(LogLevel.Information);
+        });
+        services.AddSingleton<CommandsHandler>();
+        services.AddSingleton<MoreCommandsHandler>();
+        return services.BuildServiceProvider();
+    }
+
+    #region Command Configuration Methods
+
+    private static void ConfigureSplitCommand(RootCommand rootCommand)
+    {
         var fileOption = new Option<FileInfo>(
             name: "--input",
             description: "input pdf filename");
@@ -19,30 +101,26 @@ class Program
         var directoryOption = new Option<DirectoryInfo?>(
             name: "--output",
             description: "Output Directory");
-      
-        
+
         var rangeOption = new Option<string?>(
             name: "--range",
-            description: "page range");          
-        
+            description: "page range");
+
         var passwordOption = new Option<string?>(
             name: "--password",
-            description: "pdf password");   
-        
+            description: "pdf password");
+
         var outputNameOption = new Option<string?>(
             name: "--names",
-            description: "output filenames, ex: {original}-{page}");   
-        
+            description: "output filenames, ex: {original}-{page}");
+
         var useBookmarksOption = new Option<bool>(
             name: "--use-bookmarks",
-            description: "use bookmarks for names", getDefaultValue:() => false);           
-        
+            description: "use bookmarks for names", getDefaultValue: () => false);
+
         var outputScriptOption = new Option<FileInfo?>(
             name: "--output-script",
-            description: "text file with list of files to split to, separated by newlines");   
-        
-        var rootCommand = new RootCommand($"DotNet.Pdf {Version} [merge, split, convert, extract PDF documents and pages]");
-
+            description: "text file with list of files to split to, separated by newlines");
 
         var splitCommand = new Command("split", "Split PDF");
         splitCommand.AddOption(fileOption);
@@ -52,47 +130,87 @@ class Program
         splitCommand.AddOption(useBookmarksOption);
         splitCommand.AddOption(outputNameOption);
         splitCommand.AddOption(outputScriptOption);
-        splitCommand.SetHandler(SplitCommand, fileOption, directoryOption, rangeOption, 
-            passwordOption, useBookmarksOption, outputNameOption, outputScriptOption);
-        
+
+        splitCommand.SetHandler((input, outputDirectory, rangeOption, password, useBookmarks, outputNames, outputScript) =>
+        {
+            _commandHandler.SplitPdf(input, outputDirectory, rangeOption, password, useBookmarks, outputNames, outputScript);
+        }, fileOption, directoryOption, rangeOption, passwordOption, useBookmarksOption, outputNameOption, outputScriptOption);
+
+        rootCommand.AddCommand(splitCommand);
+    }
+
+    private static void ConfigureMergeCommand(RootCommand rootCommand)
+    {
         var recursiveOption = new Option<bool>(
             name: "--recursive",
-            description: "Look for PDFs recursively", getDefaultValue:() => false);  
-        
+            description: "Look for PDFs recursively", getDefaultValue: () => false);
+
         var fileInputsOption = new Option<FileInfo[]?>(
             name: "--input",
             description: "multiple filenames to merge");
-        
+
         var inputDirectoryOption = new Option<DirectoryInfo?>(
             name: "--input-directory",
-            description: "merge all files inside this directory");        
-        
+            description: "merge all files inside this directory");
+
         var outputFileOption = new Option<FileInfo>(
             name: "--output",
             description: "output pdf filename");
-        
+
         var inputScriptOption = new Option<FileInfo?>(
             name: "--input-script",
-            description: "text file with list of files to merge, separated by newlines");        
-        
+            description: "text file with list of files to merge, separated by newlines");
+
+        var passwordOption = new Option<string?>(
+            name: "--password",
+            description: "pdf password for input files");
+
         var mergeCommand = new Command("merge", "Merge PDFs");
         mergeCommand.AddOption(fileInputsOption);
         mergeCommand.AddOption(outputFileOption);
         mergeCommand.AddOption(inputScriptOption);
         mergeCommand.AddOption(inputDirectoryOption);
         mergeCommand.AddOption(recursiveOption);
-        mergeCommand.SetHandler(MergeCommand, fileInputsOption, outputFileOption, inputScriptOption, 
-            inputDirectoryOption, recursiveOption);
-        
-        
+        mergeCommand.AddOption(passwordOption);
+
+        mergeCommand.SetHandler((inputFilenames, outputFilename, inputScript, inputDirectory, useRecursive, password) =>
+        {
+            _commandHandler.MergePdfs(inputFilenames, outputFilename, inputScript, inputDirectory, useRecursive, password);
+        }, fileInputsOption, outputFileOption, inputScriptOption, inputDirectoryOption, recursiveOption, passwordOption);
+
+        rootCommand.AddCommand(mergeCommand);
+    }
+
+    private static void ConfigureConvertCommand(RootCommand rootCommand)
+    {
+        var fileOption = new Option<FileInfo>(
+            name: "--input",
+            description: "input pdf filename");
+
+        var directoryOption = new Option<DirectoryInfo?>(
+            name: "--output",
+            description: "Output Directory");
+
+        var rangeOption = new Option<string?>(
+            name: "--range",
+            description: "page range");
+
+        var passwordOption = new Option<string?>(
+            name: "--password",
+            description: "pdf password");
+
+        var outputNameOption = new Option<string?>(
+            name: "--names",
+            description: "output filenames, ex: {original}-{page}");
+
         var dpiOption = new Option<int>(
             name: "--dpi",
             description: "output dpi", getDefaultValue: () => 200);
-        
+
         var encoderOption = new Option<string>(
             name: "--encoder",
             description: "encoder [.png, .jpg, .gif, .bmp]", getDefaultValue: () => ".jpg");
-        
+
         var convertCommand = new Command("convert", "Convert PDF to images");
         convertCommand.AddOption(fileOption);
         convertCommand.AddOption(directoryOption);
@@ -101,350 +219,415 @@ class Program
         convertCommand.AddOption(encoderOption);
         convertCommand.AddOption(dpiOption);
         convertCommand.AddOption(outputNameOption);
-        convertCommand.SetHandler(ConvertCommand, fileOption, directoryOption, rangeOption, passwordOption, 
-            outputNameOption, dpiOption, encoderOption);
-        
-        
-        
+
+        convertCommand.SetHandler((input, outputDirectory, rangeOption, password, outputNames, dpi, encoder) =>
+        {
+            _commandHandler.ConvertPdfToImages(input, outputDirectory, rangeOption, password, outputNames, dpi, encoder);
+        }, fileOption, directoryOption, rangeOption, passwordOption, outputNameOption, dpiOption, encoderOption);
+
+        rootCommand.AddCommand(convertCommand);
+    }
+
+    private static void ConfigureImageToPdfCommand(RootCommand rootCommand)
+    {
         var inputImageOption = new Option<FileInfo>(
             name: "--input",
             description: "input image filename");
-        
+
+        var outputFileOption = new Option<FileInfo?>(
+            name: "--output",
+            description: "output pdf filename");
+
         var imageCommand = new Command("imagetopdf", "Convert image to PDF");
         imageCommand.AddOption(inputImageOption);
         imageCommand.AddOption(outputFileOption);
-        imageCommand.SetHandler(ImageToPdfCommand, inputImageOption, outputFileOption);
-        
+
+        imageCommand.SetHandler((input, output) =>
+        {
+            _commandHandler.ConvertImageToPdf(input, output);
+        }, inputImageOption, outputFileOption);
+
+        rootCommand.AddCommand(imageCommand);
+    }
+
+    private static void ConfigureTextCommand(RootCommand rootCommand)
+    {
+        var fileOption = new Option<FileInfo>(
+            name: "--input",
+            description: "input pdf filename");
+
+        var rangeOption = new Option<string?>(
+            name: "--range",
+            description: "page range");
+
+        var passwordOption = new Option<string?>(
+            name: "--password",
+            description: "pdf password");
+
         var outputFormatOption = new Option<string>(
             name: "--format",
             description: "output format [text json xml]", getDefaultValue: () => "text");
-        
+
         var textCommand = new Command("text", "Extract PDF Text");
         textCommand.AddOption(fileOption);
         textCommand.AddOption(rangeOption);
         textCommand.AddOption(passwordOption);
         textCommand.AddOption(outputFormatOption);
-        textCommand.SetHandler(TextCommand, fileOption, rangeOption, passwordOption, outputFormatOption);
-        
+
+        textCommand.SetHandler((input, rangeOption, password, outputFormat) =>
+        {
+            _commandHandler.ExtractText(input, rangeOption, password, outputFormat);
+        }, fileOption, rangeOption, passwordOption, outputFormatOption);
+
+        rootCommand.AddCommand(textCommand);
+    }
+
+    private static void ConfigureBookmarksCommand(RootCommand rootCommand)
+    {
+        var fileOption = new Option<FileInfo>(
+            name: "--input",
+            description: "input pdf filename");
+
+        var passwordOption = new Option<string?>(
+            name: "--password",
+            description: "pdf password");
+
+        var outputFormatOption = new Option<string>(
+            name: "--format",
+            description: "output format [text json xml]", getDefaultValue: () => "text");
+
         var bookmarksCommand = new Command("bookmarks", "Extract PDF Bookmarks (outlines)");
         bookmarksCommand.AddOption(fileOption);
         bookmarksCommand.AddOption(passwordOption);
         bookmarksCommand.AddOption(outputFormatOption);
-        bookmarksCommand.SetHandler(BookmarksCommand, fileOption, passwordOption, outputFormatOption);
-        
+
+        bookmarksCommand.SetHandler((input, password, outputFormat) =>
+        {
+            _commandHandler.ExtractBookmarks(input, password, outputFormat);
+        }, fileOption, passwordOption, outputFormatOption);
+
+        rootCommand.AddCommand(bookmarksCommand);
+    }
+
+    private static void ConfigureInfoCommand(RootCommand rootCommand)
+    {
+        var fileOption = new Option<FileInfo>(
+            name: "--input",
+            description: "input pdf filename");
+
+        var passwordOption = new Option<string?>(
+            name: "--password",
+            description: "pdf password");
+
+        var outputFormatOption = new Option<string>(
+            name: "--format",
+            description: "output format [text json xml]", getDefaultValue: () => "text");
+
         var infoCommand = new Command("info", "Extract PDF Information");
         infoCommand.AddOption(fileOption);
         infoCommand.AddOption(passwordOption);
         infoCommand.AddOption(outputFormatOption);
-        infoCommand.SetHandler(InfoCommand, fileOption, passwordOption, outputFormatOption);
-        
-        rootCommand.AddCommand(splitCommand);
-        rootCommand.AddCommand(mergeCommand);
-        rootCommand.AddCommand(convertCommand);
-        rootCommand.AddCommand(imageCommand);
-        rootCommand.AddCommand(textCommand);
-        rootCommand.AddCommand(bookmarksCommand);
+
+        infoCommand.SetHandler((input, password, outputFormat) =>
+        {
+            _commandHandler.GetPdfInfo(input, password, outputFormat);
+        }, fileOption, passwordOption, outputFormatOption);
+
         rootCommand.AddCommand(infoCommand);
-        rootCommand.SetHandler(RootCommand);
-
-        return await rootCommand.InvokeAsync(args);
     }
 
-    /// <summary>
-    /// Retrieves information from a PDF file and displays it in the console or as a JSON string.
-    /// </summary>
-    /// <param name="input">The input file to extract information from.</param>
-    /// <param name="password">Optional password for encrypted PDF file. Pass null or empty string if PDF is not password protected.</param>
-    /// <param name="outputFormat">The format in which to display the information. Valid values are "text" or "json".</param>
-    private static void InfoCommand(FileInfo input, string? password, string outputFormat)
+    private static void ConfigureRotateCommand(RootCommand rootCommand)
     {
-        if (input.Exists)
-        {
-            
-            var pdfInfo = Pdfium.GetPdfInformation(input.FullName, password ?? "");
+        var fileOption = new Option<FileInfo>(
+            name: "--input",
+            description: "input pdf filename");
 
-            if (pdfInfo is not null)
-            {
-                if (outputFormat == "text")
-                {
-                    Console.WriteLine($"Pages = {pdfInfo?.Pages}");
-                    Console.WriteLine($"Author = {pdfInfo?.Author}");
-                    Console.WriteLine($"CreationDate = {pdfInfo?.CreationDate}");
-                    Console.WriteLine($"Creator = {pdfInfo?.Creator}");
-                    Console.WriteLine($"Keywords = {pdfInfo?.Keywords}");
-                    Console.WriteLine($"Producer = {pdfInfo?.Producer}");
-                    Console.WriteLine($"ModifiedDate = {pdfInfo?.ModifiedDate}");
-                    Console.WriteLine($"Subject = {pdfInfo?.Subject}");
-                    Console.WriteLine($"Title = {pdfInfo?.Title}");
-                    Console.WriteLine($"Version = {pdfInfo?.Version}");
-                    Console.WriteLine($"Trapped = {pdfInfo?.Trapped}");
-                }
-                
-                if (outputFormat == "json")
-                {
-                    var jsonString = JsonSerializer.Serialize(
-                        pdfInfo!, SourceGenerationContext.Default.PdfInfo);
-                    Console.WriteLine(jsonString);
-                }
-            }
-        }
+        var outputFileOption = new Option<FileInfo>(
+            name: "--output",
+            description: "output pdf filename");
+
+        var rangeOption = new Option<string?>(
+            name: "--range",
+            description: "page range to rotate");
+
+        var passwordOption = new Option<string?>(
+            name: "--password",
+            description: "pdf password");
+
+        var rotationOption = new Option<int>(
+            name: "--rotation",
+            description: "rotation angle (90, 180, 270 degrees)", getDefaultValue: () => 90);
+
+        var rotateCommand = new Command("rotate", "Rotate PDF pages");
+        rotateCommand.AddOption(fileOption);
+        rotateCommand.AddOption(outputFileOption);
+        rotateCommand.AddOption(rangeOption);
+        rotateCommand.AddOption(passwordOption);
+        rotateCommand.AddOption(rotationOption);
+
+        rotateCommand.SetHandler((input, output, range, password, rotation) =>
+        {
+            _commandHandler.RotatePdfPages(input, output, rotation, range, password);
+        }, fileOption, outputFileOption, rangeOption, passwordOption, rotationOption);
+
+        rootCommand.AddCommand(rotateCommand);
     }
 
-    /// <summary>
-    /// Extracts bookmarks from a PDF file and outputs them in the specified format.
-    /// </summary>
-    /// <param name="input">The PDF file to extract bookmarks from.</param>
-    /// <param name="password">The password for the PDF file. If no password is required, pass null.</param>
-    /// <param name="outputFormat">The output format for the extracted bookmarks. Valid values are "text" and "json".</param>
-    private static void BookmarksCommand(FileInfo input, string? password, string outputFormat)
+    private static void ConfigureRemoveCommand(RootCommand rootCommand)
     {
-        if (input.Exists)
-        {
-            var bookmarks = Pdfium.GetPdfBookmarks(input.FullName, password ?? "");
-            if (bookmarks is not null)
-            {
-                if (outputFormat == "text")
-                {
-                    foreach (var bookmark in bookmarks)
-                    {
-                        Console.WriteLine($"{bookmark.Level}> {bookmark.Title}\t[{bookmark.Action} {bookmark.Page}]");
-                    }
-                }
+        var fileOption = new Option<FileInfo>(
+            name: "--input",
+            description: "input pdf filename");
 
-                if (outputFormat == "json")
-                {
-                    var jsonString = JsonSerializer.Serialize(
-                        bookmarks!, SourceGenerationContext.Default.ListPDfBookmark);
-                    Console.WriteLine(jsonString);
-                }
-                //if format == text
-                
-            }
-        }
+        var outputFileOption = new Option<FileInfo>(
+            name: "--output",
+            description: "output pdf filename");
+
+        var pagesOption = new Option<string>(
+            name: "--pages",
+            description: "comma-separated list of page numbers to remove (e.g., 1,3,5)");
+
+        var passwordOption = new Option<string?>(
+            name: "--password",
+            description: "pdf password");
+
+        var removeCommand = new Command("remove", "Remove pages from PDF");
+        removeCommand.AddOption(fileOption);
+        removeCommand.AddOption(outputFileOption);
+        removeCommand.AddOption(pagesOption);
+        removeCommand.AddOption(passwordOption);
+
+        removeCommand.SetHandler((input, output, pages, password) =>
+        {
+            _commandHandler.RemovePdfPages(input, output, pages, password);
+        }, fileOption, outputFileOption, pagesOption, passwordOption);
+
+        rootCommand.AddCommand(removeCommand);
     }
 
-    /// <summary>
-    /// Extracts Text from a PDF file and outputs them in the specified format.
-    /// </summary>
-    /// <param name="input">The input file.</param>
-    /// <param name="rangeOption">The range option for parsing text.</param>
-    /// <param name="password">The password used to open the input file, if required.</param>
-    /// <param name="outputFormat">The output format ('text' or 'json').</param>
-    private static void TextCommand(FileInfo input, string? rangeOption, string? password, string outputFormat)
+    private static void ConfigureInsertCommand(RootCommand rootCommand)
     {
-        if (input.Exists)
-        {
-            var parsedRange = Parsers.ParsePageRange(rangeOption);
-            var texts = Pdfium.GetPdfText(input.FullName, parsedRange, password ?? "");
-            
-            //if format == text
-            
-            if (texts is not null)
-            {
-                if (outputFormat == "text")
-                {
-                    foreach (var text in texts)
-                    {
-                        Console.WriteLine(text.Text);
-                    }
-                }
-                
-                if (outputFormat == "json")
-                {
-                    var jsonString = JsonSerializer.Serialize(
-                        texts!, SourceGenerationContext.Default.ListPDfPageText);
-                    Console.WriteLine(jsonString);
-                }
+        var fileOption = new Option<FileInfo>(
+            name: "--input",
+            description: "input pdf filename");
 
-                
-            }
-            
-        }
+        var outputFileOption = new Option<FileInfo>(
+            name: "--output",
+            description: "output pdf filename");
+
+        var positionsOption = new Option<string>(
+            name: "--positions",
+            description: "insert positions in format 'position:count' (e.g., 1:2,5:1 to insert 2 pages at position 1 and 1 page at position 5)");
+
+        var passwordOption = new Option<string?>(
+            name: "--password",
+            description: "pdf password");
+
+        var widthOption = new Option<double>(
+            name: "--width",
+            description: "width of blank pages in points", getDefaultValue: () => 612.0);
+
+        var heightOption = new Option<double>(
+            name: "--height",
+            description: "height of blank pages in points", getDefaultValue: () => 792.0);
+
+        var insertCommand = new Command("insert", "Insert blank pages into PDF");
+        insertCommand.AddOption(fileOption);
+        insertCommand.AddOption(outputFileOption);
+        insertCommand.AddOption(positionsOption);
+        insertCommand.AddOption(passwordOption);
+        insertCommand.AddOption(widthOption);
+        insertCommand.AddOption(heightOption);
+
+        insertCommand.SetHandler((input, output, positions, password, width, height) =>
+        {
+            _commandHandler.InsertBlankPages(input, output, positions, width, height, password);
+        }, fileOption, outputFileOption, positionsOption, passwordOption, widthOption, heightOption);
+
+        rootCommand.AddCommand(insertCommand);
     }
 
-    /// <summary>
-    /// Converts an image file to a PDF file 
-    /// </summary>
-    /// <param name="input">The input image file to convert.</param>
-    /// <param name="output">Optional. The output PDF file. If not provided, the default output location will be used.</param>
-    /// /
-    private static void ImageToPdfCommand(FileInfo input, FileInfo? output)
+    private static void ConfigureReorderCommand(RootCommand rootCommand)
     {
-        if (input.Exists)
+        var fileOption = new Option<FileInfo>(
+            name: "--input",
+            description: "input pdf filename");
+
+        var outputFileOption = new Option<FileInfo>(
+            name: "--output",
+            description: "output pdf filename");
+
+        var orderOption = new Option<string>(
+            name: "--order",
+            description: "comma-separated list of page numbers in new order (e.g., 3,1,2,4)");
+
+        var passwordOption = new Option<string?>(
+            name: "--password",
+            description: "pdf password");
+
+        var reorderCommand = new Command("reorder", "Reorder PDF pages");
+        reorderCommand.AddOption(fileOption);
+        reorderCommand.AddOption(outputFileOption);
+        reorderCommand.AddOption(orderOption);
+        reorderCommand.AddOption(passwordOption);
+
+        reorderCommand.SetHandler((input, output, order, password) =>
         {
-            Pdfium.ConvertImageToPdf(input.FullName, output?.FullName);
-        }
+            _commandHandler.ReorderPdfPages(input, output, order, password);
+        }, fileOption, outputFileOption, orderOption, passwordOption);
+
+        rootCommand.AddCommand(reorderCommand);
+    }
+
+    private static void ConfigureListAttachmentsCommand(RootCommand rootCommand)
+    {
+        var fileOption = new Option<FileInfo>(
+            name: "--input",
+            description: "input pdf filename");
+
+        var passwordOption = new Option<string?>(
+            name: "--password",
+            description: "pdf password");
+
+        var outputFormatOption = new Option<string>(
+            name: "--format",
+            description: "output format: text, json", getDefaultValue: () => "text");
+
+        var listAttachmentsCommand = new Command("list-attachments", "List PDF attachments");
+        listAttachmentsCommand.AddOption(fileOption);
+        listAttachmentsCommand.AddOption(passwordOption);
+        listAttachmentsCommand.AddOption(outputFormatOption);
+
+        listAttachmentsCommand.SetHandler((input, password, outputFormat) =>
+        {
+            _commandHandler.ListAttachments(input, password, outputFormat);
+        }, fileOption, passwordOption, outputFormatOption);
+
+        rootCommand.AddCommand(listAttachmentsCommand);
+    }
+
+    private static void ConfigureExtractAttachmentsCommand(RootCommand rootCommand)
+    {
+        var fileOption = new Option<FileInfo>(
+            name: "--input",
+            description: "input pdf filename");
+
+        var outputDirectoryOption = new Option<DirectoryInfo?>(
+            name: "--output",
+            description: "output directory for extracted attachments");
+
+        var passwordOption = new Option<string?>(
+            name: "--password",
+            description: "pdf password");
+
+        var indexOption = new Option<string?>(
+            name: "--index",
+            description: "extract specific attachment by index (0-based). If not specified, all attachments are extracted");
+
+        var extractAttachmentsCommand = new Command("extract-attachments", "Extract PDF attachments");
+        extractAttachmentsCommand.AddOption(fileOption);
+        extractAttachmentsCommand.AddOption(outputDirectoryOption);
+        extractAttachmentsCommand.AddOption(passwordOption);
+        extractAttachmentsCommand.AddOption(indexOption);
+
+        extractAttachmentsCommand.SetHandler((input, outputDirectory, password, index) =>
+        {
+            _commandHandler.ExtractAttachments(input, outputDirectory, password, index);
+        }, fileOption, outputDirectoryOption, passwordOption, indexOption);
+
+        rootCommand.AddCommand(extractAttachmentsCommand);
+    }
+
+    private static void ConfigureListPageObjectsCommand(RootCommand rootCommand)
+    {
+        var inputOption = new Option<FileInfo>("--input", "Input PDF file") { IsRequired = true };
+        var rangeOption = new Option<string?>(
+            name: "--range",
+            description: "page range");
+
+        var passwordOption = new Option<string?>("--password", "PDF password");
+        var formatOption = new Option<string?>("--format", description: "Output format (text, json)", getDefaultValue: () => "text");
         
+        var command = new Command("list-objects", "List all objects on a page");
+        command.AddOption(inputOption);
+        command.AddOption(rangeOption);
+        command.AddOption(passwordOption);
+        command.AddOption(formatOption);
+        
+        command.SetHandler((input, range, password, format) => 
+            _moreCommandHandler.ListPageObjects(input, range, password, format ?? string.Empty),
+            inputOption, rangeOption, passwordOption, formatOption);
+        
+        rootCommand.AddCommand(command);
+    }
+    
+    private static void ConfigureListFormFieldsCommand(RootCommand rootCommand)
+    {
+        var inputOption = new Option<FileInfo>("--input", "Input PDF file") { IsRequired = true };
+        var passwordOption = new Option<string?>("--password", "PDF password");
+        var formatOption = new Option<string>("--format", description: "Output format (text, json)", getDefaultValue: () => "text");
+
+        var command = new Command("list-forms", "List all form fields in a document");
+        command.AddOption(inputOption);
+        command.AddOption(passwordOption);
+        command.AddOption(formatOption);
+
+        command.SetHandler((input, password, format) => 
+            _moreCommandHandler.ListFormFields(input, password, format),
+            inputOption, passwordOption, formatOption);
+        
+        rootCommand.AddCommand(command);
     }
 
-    /// <summary>
-    /// Splits a PDF file into multiple files based on the given parameters.
-    /// </summary>
-    /// <param name="input">The input PDF file to split.</param>
-    /// <param name="outputDirectory">The directory to save the splitted files. If null, the same directory as the input file will be used.</param>
-    /// <param name="rangeOption">The range option specifying which pages to split. null to split all pages.</param>
-    /// <param name="password">The password to unlock the input PDF file. If not provided, an empty string will be used.</param>
-    /// <param name="useBookmarks">true to split using bookmarks, false otherwise.</param>
-    /// <param name="outputNames">The output file names to be used for splitted files. If null, default names will be used.</param>
-    private static void SplitCommand(FileInfo input, DirectoryInfo? outputDirectory, string? rangeOption, 
-        string? password, bool useBookmarks, string? outputNames, FileInfo? outputScript)
+    private static void ConfigureWatermarkCommand(RootCommand rootCommand)
     {
-        var progress = new Progress<PdfSplitProgress>(progress =>
+        var inputOption = new Option<FileInfo>("--input", "Input PDF file") { IsRequired = true };
+        var outputOption = new Option<FileInfo>("--output", "Output PDF file") { IsRequired = true };
+        var passwordOption = new Option<string?>("--password", "PDF password");
+
+        var textOption = new Option<string?>("--text", "Watermark text");
+        var imageOption = new Option<FileInfo?>("--image", "Watermark image path");
+        var fontOption = new Option<string>("--font", description: "Font name for text watermark", getDefaultValue:() => "Helvetica");
+        var fontSizeOption = new Option<double>("--font-size", description: "Font size for text watermark", getDefaultValue: () => 50.0);
+        var colorOption = new Option<string>("--color", description: "Color for text watermark (R,G,B)", getDefaultValue: () => "128,128,128");
+        var opacityOption = new Option<byte>("--opacity", description: "Opacity from 0 (transparent) to 255 (opaque)", getDefaultValue: () => 50);
+        var rotationOption = new Option<double>("--rotation", description: "Rotation angle in degrees", getDefaultValue: () => 45.0);
+        var scaleOption = new Option<double>("--scale", description: "Scale factor for image watermark", getDefaultValue: () => 1.0);
+
+        var command = new Command("watermark", "Add a text or image watermark");
+        command.AddOption(inputOption);
+        command.AddOption(outputOption);
+        command.AddOption(passwordOption);
+        command.AddOption(textOption);
+        command.AddOption(imageOption);
+        command.AddOption(fontOption);
+        command.AddOption(fontSizeOption);
+        command.AddOption(colorOption);
+        command.AddOption(opacityOption);
+        command.AddOption(rotationOption);
+        command.AddOption(scaleOption);
+        
+        command.SetHandler((InvocationContext context) =>
         {
-            Console.WriteLine($"{progress.Current+1}/{progress.Max}\t{progress.Filename}");
+            var input = context.ParseResult.GetValueForOption(inputOption)!;
+            var output = context.ParseResult.GetValueForOption(outputOption)!;
+            var password = context.ParseResult.GetValueForOption(passwordOption);
+            var text = context.ParseResult.GetValueForOption(textOption);
+            var image = context.ParseResult.GetValueForOption(imageOption);
+            var font = context.ParseResult.GetValueForOption(fontOption)!;
+            var fontSize = context.ParseResult.GetValueForOption(fontSizeOption);
+            var color = context.ParseResult.GetValueForOption(colorOption)!;
+            var opacity = context.ParseResult.GetValueForOption(opacityOption);
+            var rotation = context.ParseResult.GetValueForOption(rotationOption);
+            var scale = context.ParseResult.GetValueForOption(scaleOption);
+
+            _moreCommandHandler.AddWatermark(input, output, password, text, image, font, fontSize, color, opacity, rotation, scale);
         });
-
-        Dictionary<int, string> outputScriptNames = new(); 
         
-        if (outputScript?.Exists ?? false)
-        {
-            int i = 1;
-            foreach (var line in File.ReadAllLines(outputScript.FullName))
-            {
-                string filename = string.Empty;
-                if (line.Contains('='))
-                {
-                    string[] parts = line.Split('=');
-                    if (int.TryParse(parts[0], out int pageNumber) && parts.Length > 1)
-                    {
-                        outputScriptNames.TryAdd(pageNumber, parts[1]);
-                        i = pageNumber;
-                    }
-                    
-                } 
-                else
-                {
-                    outputScriptNames.TryAdd(i, line);
-                }
-                i++;
-            }
-        }
+        rootCommand.AddCommand(command);
+    }    
 
-        var outputDir = outputDirectory ?? input.Directory;
-        if (outputDir is not null)
-        {
-            var parsedRange = Parsers.ParsePageRange(rangeOption);
-            Pdfium.SplitPdf(input.FullName, outputDir.FullName, password: password ?? "",
-                outputName: outputNames, useBookmarks: useBookmarks, progress: progress, pageRange: parsedRange,
-                outputScriptNames: outputScriptNames);
-        }
-    }
-
-    /// <summary>
-    /// Converts a PDF file to an image using the specified parameters.
-    /// </summary>
-    /// <param name="input">The input file.</param>
-    /// <param name="outputDirectory">The output directory for the generated images. If null, the input file's directory will be used.</param>
-    /// <param name="rangeOption">The page range option.</param>
-    /// <param name="password">The password to decrypt the PDF file. If null, no password is used.</param>
-    /// <param name="outputNames">The name of the output image files. If null or empty, default names will be used.</param>
-    /// <param name="dpi">The resolution in dots per inch for the generated images.</param>
-    /// <param name="encoder">The name of the image encoder. If null or empty, the default encoder will be used.</param>
-    private static void ConvertCommand(FileInfo input, DirectoryInfo? outputDirectory, string? rangeOption, 
-        string? password,string? outputNames, int dpi, string encoder)
-    {
-        
-
-        var outputDir = outputDirectory ?? input.Directory;
-        if (outputDir is not null)
-        {
-            var pImageEncoder = IoUtils.GetEncoder(encoder);
-            
-            var parsedRange = Parsers.ParsePageRange(rangeOption);
-            if (!string.IsNullOrEmpty(outputNames))
-            {
-                var ext = Path.GetExtension(outputNames);
-                if (!string.IsNullOrEmpty(ext))
-                {
-                    pImageEncoder = IoUtils.GetEncoder(ext);
-                    
-                }
-            }
-            
-            var progress = new Progress<PdfProgress>(progress =>
-            {
-                Console.WriteLine($"{progress.Current+1}/{progress.Max}\t Encoding");
-            });
-            Pdfium.ConvertPdfToImage(input.FullName, outputDir.FullName, pImageEncoder, dpi, 
-                parsedRange, password ?? "", outputNames,progress);
-             
-        }
-    }
-
-    /// <summary>
-    /// Merges PDF files according to the specified parameters.
-    /// </summary>
-    /// <param name="inputFilenames">An optional array of input PDF file names to merge.</param>
-    /// <param name="outputFilename">The output PDF file name to save the merged result.</param>
-    /// <param name="inputScript">An optional input file containing a list of PDF file names to merge.</param>
-    /// <param name="inputDirectory">An optional input directory to search for PDF files to merge.</param>
-    /// <param name="useRecursive">A boolean flag indicating whether to recursively search in the input directory.</param>
-    private static void MergeCommand(FileInfo[]? inputFilenames, FileInfo? outputFilename, FileInfo? inputScript,
-        DirectoryInfo? inputDirectory, bool useRecursive)
-    {
-         
-        List<string> filenames = new();
-        if (inputFilenames is not null)
-        {
-            foreach (var file in  inputFilenames) filenames.Add(file.FullName);
-        }
-
-        if (inputDirectory is not null)
-        {
-            var searchOptions = useRecursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-            foreach (var file in Directory.EnumerateFileSystemEntries(inputDirectory.FullName,
-                         "*.pdf", searchOptions))
-            {
-                filenames.Add(file);
-            }
-        }
-
-        if (inputScript?.Exists ?? false)
-        {
-            foreach (var line in File.ReadAllLines(inputScript.FullName))
-            {
-                if (File.Exists(line) && Path.GetExtension(line) == ".pdf")
-                {
-                    filenames.Add(line);
-                }
-            }
-        }
+    #endregion
 
 
-        if (outputFilename != null)
-        {
-            if (!outputFilename.Exists)
-            {
-                var progress = new Progress<PdfProgress>(progress =>
-                {
-                    Console.WriteLine($"{progress.Current + 1}/{progress.Max}\t Merge Progress");
-                });
-                Pdfium.MergeFiles(outputFilename.FullName, filenames, "", deleteOriginal: false, progress: progress);
-            }
-            else
-            {
-                Console.WriteLine($"{outputFilename.FullName} Already exists, specify another location");
-            }
-        }
-        else
-        {
-            Console.WriteLine($"Missing output filename --output");
-        }
-
-
-
-        //public static void MergeFiles(string outputFilename, List<string> inputFilenames, string password = "",
-        //    bool deleteOriginal = false,
-        //    IProgress<PdfProgress>? progress = null)
-
-
-    }
-
-    /// <summary>
-    /// Displays DotNet.Pdf application text
-    /// </summary>
-    private static void RootCommand()
-    {
-        Console.WriteLine($"DotNet.Pdf  {Version} [merge, split, convert, extract PDF documents and pages]");
-    }
 }

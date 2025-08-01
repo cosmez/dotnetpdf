@@ -11,6 +11,9 @@ public record PdfBookmarkProgress(int Current, int Max, PDfBookmark PageText);
 [JsonSerializable(typeof(PdfInfo))]
 [JsonSerializable(typeof(List<PDfBookmark>))]
 [JsonSerializable(typeof(List<PDfPageText>))]
+[JsonSerializable(typeof(List<PdfAttachment>))]
+[JsonSerializable(typeof(List<PdfPageObjectInfo>))] 
+[JsonSerializable(typeof(List<PdfFormFieldInfo>))]  
 internal partial class SourceGenerationContext : JsonSerializerContext
 {
 }
@@ -47,4 +50,48 @@ public class PDfPageText
     public string Text { get; set; } = "";
     public int Rects { get; set; }
     public int WordsCount { get; set; }
+}
+
+public class PdfAttachment
+{
+    public string Name { get; set; } = "";
+    public string MimeType { get; set; } = "";
+    public int Size { get; set; }
+    public DateTime? CreationDate { get; set; }
+    public DateTime? ModificationDate { get; set; }
+    public string Description { get; set; } = "";
+    public Dictionary<string, string> Metadata { get; set; } = new();
+}
+
+public class PdfFormFieldInfo
+{
+    public int Page { get; set; }
+    public string Name { get; set; } = "";
+    public string Type { get; set; } = "";
+    public string Value { get; set; } = "";
+    public string Rect { get; set; } = "";
+}
+
+public class WatermarkOptions
+{
+    public string? Text { get; set; }
+    public string? ImagePath { get; set; }
+    public string Font { get; set; } = "Helvetica";
+    public double FontSize { get; set; } = 50;
+    public byte Opacity { get; set; } = 50;
+    public double Rotation { get; set; } = 45;
+    public double Scale { get; set; } = 1.0;
+    public byte ColorR { get; set; } = 255;
+    public byte ColorG { get; set; }
+    public byte ColorB { get; set; }
+}
+
+public class PdfPageObjectInfo
+{
+    public string Type { get; set; } = "";
+    public float Left { get; set; }
+    public float Top { get; set; }
+    public float Right { get; set; }
+    public float Bottom { get; set; }
+    public int Page { get; set; }
 }
