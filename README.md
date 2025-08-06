@@ -1,6 +1,26 @@
 ﻿# dotnet.pdf
 
-A .NET-based tool for PDF processing, `dotnetpdf` draws  inspiration from `PDFtk server`. 
+A .NET-based tool for PDF processing, `dotnetpdf` draws inspiration from `PDFtk server`. 
+
+## Architecture (v2.0+)
+
+`dotnetpdf` has been refactored into a modular architecture:
+
+- **CLI Application** (`dotnet.pdf`) - Command-line interface for PDF operations
+- **Core Library** (`DotNet.Pdf.Core`) - Reusable PDF processing services
+  - Service-oriented architecture with dedicated classes for each PDF operation
+  - Full dependency injection support
+  - Comprehensive logging and error handling
+  - Thread-safe operations
+
+### Core Services
+- `PdfTextExtractionService` - Extract text from PDF documents
+- `PdfBookmarkService` - Process PDF bookmarks and outlines  
+- `PdfInformationService` - Extract document metadata
+- `PdfAttachmentService` - Handle PDF attachments
+- `PdfPageObjectService` - Analyze page objects
+- `PdfFormFieldService` - Inspect form fields
+- `PdfWatermarkService` - Add watermarks to documents
 
 ## Features
 
@@ -115,4 +135,52 @@ dotnetpdf watermark --input <input.pdf> --output <watermarked.pdf> --image <logo
 # Print Help
 dotnetpdf --help
 ```
+
+## Using DotNet.Pdf.Core Library
+
+The core functionality is available as a reusable library:
+
+```csharp
+using DotNet.Pdf.Core;
+using Microsoft.Extensions.Logging;
+
+// Setup logging
+var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+
+// Create PDF processor
+var pdfProcessor = new PdfProcessor(loggerFactory);
+
+// Extract text
+var texts = pdfProcessor.GetPdfText("document.pdf", pageRange: null, password: "");
+foreach (var pageText in texts)
+{
+    Console.WriteLine($"Page {pageText.Page}: {pageText.Text}");
+}
+
+// Get document information
+var info = pdfProcessor.GetPdfInformation("document.pdf", password: "");
+Console.WriteLine($"Title: {info.Title}, Pages: {info.Pages}");
+
+// Extract bookmarks
+var bookmarks = pdfProcessor.GetPdfBookmarks("document.pdf", password: "");
+foreach (var bookmark in bookmarks)
+{
+    Console.WriteLine($"Level {bookmark.Level}: {bookmark.Title}");
+}
+```
+
+### Dependency Injection Setup
+
+```csharp
+// In ASP.NET Core or Generic Host
+services.AddSingleton<PdfProcessor>(provider =>
+{
+    var loggerFactory = provider.GetRequiredService<ILoggerFactory>();
+    return new PdfProcessor(loggerFactory);
+});
+```
+
+## Migration from v1.x
+
+See [MIGRATION.md](MIGRATION.md) for detailed migration guide from the old static API to the new service-oriented architecture.
 

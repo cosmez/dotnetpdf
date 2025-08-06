@@ -1,15 +1,16 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using DotNet.Pdf.Core;
 
 namespace dotnet.pdf;
 
 public class MoreCommandsHandler : BaseCommandHandler
 {
-    private readonly ILogger<MoreCommandsHandler> _logger;
+    private readonly PdfProcessor _pdfProcessor;
 
-    public MoreCommandsHandler(ILogger<MoreCommandsHandler> logger) : base(logger)
+    public MoreCommandsHandler(ILogger<MoreCommandsHandler> logger, ILoggerFactory loggerFactory) : base(logger)
     {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _pdfProcessor = new PdfProcessor(loggerFactory);
     }
     
 
@@ -26,10 +27,10 @@ public class MoreCommandsHandler : BaseCommandHandler
                 !ValidatePageRange(rangeOption, out var parsedRange))
                 return;
 
-            var objects = Pdfium.ListPageObjects(input.FullName, parsedRange, password ?? "");
+            var objects = _pdfProcessor.ListPageObjects(input.FullName, parsedRange, password ?? "");
             if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
             {
-                var json = JsonSerializer.Serialize(objects, SourceGenerationContext.Default.ListPdfPageObjectInfo);
+                var json = JsonSerializer.Serialize(objects, DotNet.Pdf.Core.Models.SourceGenerationContext.Default.ListPdfPageObjectInfo);
                 Console.WriteLine(json);
             }
             else
@@ -37,7 +38,16 @@ public class MoreCommandsHandler : BaseCommandHandler
                 Console.WriteLine($"Found {objects.Count} objects:");
                 foreach (var obj in objects)
                 {
-                    Console.WriteLine($" - Page: {obj.Page}, Type: {obj.Type}, Bounds: [L: {obj.Left:F2}, B: {obj.Bottom:F2}, R: {obj.Right:F2}, T: {obj.Top:F2}]");
+                    var objectInfo = $" - Page: {obj.Page}, Index: {obj.Index}, ID: {obj.ObjectId}, Type: {obj.Type}, Bounds: [L: {obj.Left:F2}, B: {obj.Bottom:F2}, R: {obj.Right:F2}, T: {obj.Top:F2}]";
+                    
+                    // If it's a text object and we have text content, display it
+                    if (obj.Type == "Text (1)" && !string.IsNullOrEmpty(obj.TextContent))
+                    {
+                        var displayText = obj.TextContent.Length > 30 ? obj.TextContent.Substring(0, 30) + "..." : obj.TextContent;
+                        objectInfo += $", Text: \"{displayText}\"";
+                    }
+                    
+                    Console.WriteLine(objectInfo);
                 }
             }
         }
@@ -48,15 +58,55 @@ public class MoreCommandsHandler : BaseCommandHandler
         }
     }
 
+    public void RemovePageObject(FileInfo input, FileInfo output, int pageNumber, int objectIndex, string? password)
+    {
+        _logger.LogInformation("Removing object at index {ObjectIndex} from page {PageNumber} in file {File}", 
+            objectIndex, pageNumber, input.FullName);
+        try
+        {
+            if (!ValidateInputFile(input, "page object removal"))
+                return;
+
+            if (pageNumber < 1)
+            {
+                Console.WriteLine("Error: Page number must be 1 or greater.");
+                return;
+            }
+
+            if (objectIndex < 0)
+            {
+                Console.WriteLine("Error: Object index must be 0 or greater.");
+                return;
+            }
+
+            Console.WriteLine($"Removing object {objectIndex} from page {pageNumber} in {input.Name} and saving to {output.Name}...");
+            var result = _pdfProcessor.RemovePageObject(input.FullName, output.FullName, pageNumber, objectIndex, password ?? "");
+            
+            if (result)
+            {
+                Console.WriteLine("Page object removed successfully.");
+            }
+            else
+            {
+                Console.WriteLine("Failed to remove page object. Check the log for details.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error removing page object from file: {FileName}", input.FullName);
+            Console.WriteLine($"Error: Failed to remove page object - {ex.Message}");
+        }
+    }
+
     public void ListFormFields(FileInfo input, string? password, string outputFormat)
     {
         _logger.LogInformation("Listing form fields for file {File}", input.FullName);
         try
         {
-            var fields = Pdfium.ListFormFields(input.FullName, password ?? "");
+            var fields = _pdfProcessor.ListFormFields(input.FullName, password ?? "");
             if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
             {
-                var json = JsonSerializer.Serialize(fields, SourceGenerationContext.Default.ListPdfFormFieldInfo);
+                var json = JsonSerializer.Serialize(fields, DotNet.Pdf.Core.Models.SourceGenerationContext.Default.ListPdfFormFieldInfo);
                 Console.WriteLine(json);
             }
             else
@@ -93,7 +143,7 @@ public class MoreCommandsHandler : BaseCommandHandler
                 return;
             }
 
-            var options = new WatermarkOptions
+            var options = new DotNet.Pdf.Core.Models.WatermarkOptions
             {
                 Text = text,
                 ImagePath = image?.FullName,
@@ -111,7 +161,7 @@ public class MoreCommandsHandler : BaseCommandHandler
             options.ColorB = colorParts[2];
 
             Console.WriteLine($"Adding watermark to {input.Name} and saving to {output.Name}...");
-            Pdfium.AddWatermark(input.FullName, output.FullName, options, password ?? "");
+            _pdfProcessor.AddWatermark(input.FullName, output.FullName, options, password ?? "");
             Console.WriteLine("Watermark added successfully.");
         }
         catch (Exception ex)

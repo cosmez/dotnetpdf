@@ -1,6 +1,6 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
-namespace dotnet.pdf;
+namespace DotNet.Pdf.Core.Models;
 
 public record PdfProgress(int Current, int Max);
 public record PdfSplitProgress(int Current, int Max, string Filename);
@@ -14,7 +14,7 @@ public record PdfBookmarkProgress(int Current, int Max, PDfBookmark PageText);
 [JsonSerializable(typeof(List<PdfAttachment>))]
 [JsonSerializable(typeof(List<PdfPageObjectInfo>))] 
 [JsonSerializable(typeof(List<PdfFormFieldInfo>))]  
-internal partial class SourceGenerationContext : JsonSerializerContext
+public partial class SourceGenerationContext : JsonSerializerContext
 {
 }
 
@@ -94,4 +94,7 @@ public class PdfPageObjectInfo
     public float Right { get; set; }
     public float Bottom { get; set; }
     public int Page { get; set; }
+    public int Index { get; set; }
+    public uint ObjectId { get; set; }
+    public string? TextContent { get; set; }
 }

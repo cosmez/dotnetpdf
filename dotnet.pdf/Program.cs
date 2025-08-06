@@ -1,5 +1,4 @@
 using System.CommandLine;
-using PDFiumCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using System.CommandLine.Invocation;
@@ -8,7 +7,7 @@ namespace dotnet.pdf;
 
 class Program
 {
-    private const string Version = "v0.4";
+    private const string Version = "v1.5";
     private static ServiceProvider _serviceProvider = null!;
     private static CommandsHandler _commandHandler = null!;
     private static MoreCommandsHandler _moreCommandHandler = null!;
@@ -22,8 +21,6 @@ class Program
 
         try
         {
-            fpdfview.FPDF_InitLibrary();
-
             var rootCommand = new RootCommand($"DotNet.Pdf {Version} [merge, split, convert, extract PDF documents and pages]");
 
             // Configure commands
@@ -41,8 +38,10 @@ class Program
             ConfigureListAttachmentsCommand(rootCommand);
             ConfigureExtractAttachmentsCommand(rootCommand);
             ConfigureListPageObjectsCommand(rootCommand);
+            ConfigureRemoveObjectCommand(rootCommand);
             ConfigureListFormFieldsCommand(rootCommand);
             ConfigureWatermarkCommand(rootCommand);
+            ConfigureUnlockCommand(rootCommand);
 
             rootCommand.SetHandler(() =>
             {
@@ -61,16 +60,7 @@ class Program
         }
         finally
         {
-            try
-            {
-                fpdfview.FPDF_DestroyLibrary();
-            }
-            catch (Exception ex)
-            {
-                var logger = _serviceProvider.GetService<ILogger<Program>>();
-                logger?.LogError(ex, "Error destroying PDFium library");
-            }
-            finally
+            // PDFium cleanup is now handled internally by the library services
             {
                 await _serviceProvider.DisposeAsync();
             }
@@ -85,7 +75,12 @@ class Program
             builder.AddConsole()
                    .SetMinimumLevel(LogLevel.Information);
         });
-        services.AddSingleton<CommandsHandler>();
+        services.AddSingleton<CommandsHandler>(provider =>
+        {
+            var logger = provider.GetRequiredService<ILogger<CommandsHandler>>();
+            var loggerFactory = provider.GetRequiredService<ILoggerFactory>();
+            return new CommandsHandler(logger, loggerFactory);
+        });
         services.AddSingleton<MoreCommandsHandler>();
         return services.BuildServiceProvider();
     }
@@ -579,6 +574,28 @@ class Program
         rootCommand.AddCommand(command);
     }
 
+    private static void ConfigureRemoveObjectCommand(RootCommand rootCommand)
+    {
+        var inputOption = new Option<FileInfo>("--input", "Input PDF file") { IsRequired = true };
+        var outputOption = new Option<FileInfo>("--output", "Output PDF file") { IsRequired = true };
+        var pageOption = new Option<int>("--page", "Page number (1-based)") { IsRequired = true };
+        var indexOption = new Option<int>("--index", "Object index (0-based)") { IsRequired = true };
+        var passwordOption = new Option<string?>("--password", "PDF password");
+
+        var command = new Command("remove-object", "Remove a specific object from a page");
+        command.AddOption(inputOption);
+        command.AddOption(outputOption);
+        command.AddOption(pageOption);
+        command.AddOption(indexOption);
+        command.AddOption(passwordOption);
+
+        command.SetHandler((input, output, page, index, password) => 
+            _moreCommandHandler.RemovePageObject(input, output, page, index, password),
+            inputOption, outputOption, pageOption, indexOption, passwordOption);
+        
+        rootCommand.AddCommand(command);
+    }
+
     private static void ConfigureWatermarkCommand(RootCommand rootCommand)
     {
         var inputOption = new Option<FileInfo>("--input", "Input PDF file") { IsRequired = true };
@@ -626,6 +643,33 @@ class Program
         
         rootCommand.AddCommand(command);
     }    
+
+    private static void ConfigureUnlockCommand(RootCommand rootCommand)
+    {
+        var inputOption = new Option<FileInfo>(
+            name: "--input",
+            description: "Input password-protected PDF file");
+
+        var outputOption = new Option<FileInfo>(
+            name: "--output", 
+            description: "Output file for the unlocked PDF");
+
+        var passwordOption = new Option<string>(
+            name: "--password",
+            description: "Password to unlock the input PDF");
+
+        var unlockCommand = new Command("unlock", "Unlock a password-protected PDF by removing security restrictions");
+        unlockCommand.AddOption(inputOption);
+        unlockCommand.AddOption(outputOption);
+        unlockCommand.AddOption(passwordOption);
+
+        unlockCommand.SetHandler((input, output, password) =>
+        {
+            _commandHandler.UnlockPdf(input, output, password);
+        }, inputOption, outputOption, passwordOption);
+
+        rootCommand.AddCommand(unlockCommand);
+    }
 
     #endregion
 

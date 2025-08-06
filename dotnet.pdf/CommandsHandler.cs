@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using DotNet.Pdf.Core;
+using DotNet.Pdf.Core.Models;
 
 namespace dotnet.pdf;
 
@@ -8,11 +10,11 @@ namespace dotnet.pdf;
 /// </summary>
 public class CommandsHandler : BaseCommandHandler
 {
-    private readonly ILogger<CommandsHandler> _logger;
+    private readonly PdfProcessor _pdfProcessor;
 
-    public CommandsHandler(ILogger<CommandsHandler> logger) : base(logger)
+    public CommandsHandler(ILogger<CommandsHandler> logger, ILoggerFactory loggerFactory) : base(logger)
     {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _pdfProcessor = new PdfProcessor(loggerFactory);
     }
 
     
@@ -75,7 +77,7 @@ public class CommandsHandler : BaseCommandHandler
                 }
             }
 
-            Pdfium.SplitPdf(input.FullName, validOutputDir.FullName, password: password ?? "",
+            _pdfProcessor.SplitPdf(input.FullName, validOutputDir.FullName, password: password ?? "",
                 outputName: outputNames, useBookmarks: useBookmarks, progress: progress, pageRange: parsedRange,
                 outputScriptNames: outputScriptNames);
 
@@ -176,7 +178,7 @@ public class CommandsHandler : BaseCommandHandler
                 Console.WriteLine($"{progress.Current + 1}/{progress.Max}\t Merge Progress");
             });
 
-            Pdfium.MergeFiles(outputFilename.FullName, filenames, password ?? "", deleteOriginal: false, progress: progress);
+            _pdfProcessor.MergeFiles(outputFilename.FullName, filenames, password ?? "", deleteOriginal: false, progress: progress);
             _logger.LogInformation("Successfully merged {Count} files into {OutputFile}", filenames.Count, outputFilename.FullName);
         }
         catch (Exception ex)
@@ -206,14 +208,15 @@ public class CommandsHandler : BaseCommandHandler
 
             using var operation = _logger.BeginScope("ConvertCommand");
 
-            var pImageEncoder = IoUtils.GetEncoder(encoder);
+            // Determine image format from encoder parameter or output file extension
+            string imageFormat = encoder;
             
             if (!string.IsNullOrEmpty(outputNames))
             {
                 var ext = Path.GetExtension(outputNames);
                 if (!string.IsNullOrEmpty(ext))
                 {
-                    pImageEncoder = IoUtils.GetEncoder(ext);
+                    imageFormat = ext.TrimStart('.');
                 }
             }
             
@@ -222,7 +225,7 @@ public class CommandsHandler : BaseCommandHandler
                 Console.WriteLine($"{progress.Current+1}/{progress.Max}\t Encoding");
             });
 
-            Pdfium.ConvertPdfToImage(input.FullName, validOutputDir.FullName, pImageEncoder, dpi, 
+            _pdfProcessor.ConvertPdfToImage(input.FullName, validOutputDir.FullName, imageFormat, dpi, 
                 parsedRange, password ?? "", outputNames, progress);
 
             _logger.LogInformation("Successfully converted PDF to images: {InputFile} -> {OutputDir}", 
@@ -250,7 +253,7 @@ public class CommandsHandler : BaseCommandHandler
 
             using var operation = _logger.BeginScope("ImageToPdfCommand");
 
-            Pdfium.ConvertImageToPdf(input.FullName, output?.FullName);
+            _pdfProcessor.ConvertImageToPdf(input.FullName, output?.FullName);
 
             _logger.LogInformation("Successfully converted image to PDF: {OutputFile}", 
                 output?.FullName ?? Path.ChangeExtension(input.FullName, ".pdf"));
@@ -280,7 +283,7 @@ public class CommandsHandler : BaseCommandHandler
 
             using var operation = _logger.BeginScope("TextCommand");
 
-            var texts = Pdfium.GetPdfText(input.FullName, parsedRange, password ?? "");
+            var texts = _pdfProcessor.GetPdfText(input.FullName, parsedRange, password ?? "");
 
             if (texts is not null)
             {
@@ -294,7 +297,7 @@ public class CommandsHandler : BaseCommandHandler
                 else if (outputFormat.ToLower() == "json")
                 {
                     var jsonString = JsonSerializer.Serialize(
-                        texts, SourceGenerationContext.Default.ListPDfPageText);
+                        texts, DotNet.Pdf.Core.Models.SourceGenerationContext.Default.ListPDfPageText);
                     Console.WriteLine(jsonString);
                 }
 
@@ -329,7 +332,7 @@ public class CommandsHandler : BaseCommandHandler
 
             using var operation = _logger.BeginScope("BookmarksCommand");
 
-            var bookmarks = Pdfium.GetPdfBookmarks(input.FullName, password ?? "");
+            var bookmarks = _pdfProcessor.GetPdfBookmarks(input.FullName, password ?? "");
             if (bookmarks is not null)
             {
                 if (outputFormat.ToLower() == "text")
@@ -342,7 +345,7 @@ public class CommandsHandler : BaseCommandHandler
                 else if (outputFormat.ToLower() == "json")
                 {
                     var jsonString = JsonSerializer.Serialize(
-                        bookmarks, SourceGenerationContext.Default.ListPDfBookmark);
+                        bookmarks, DotNet.Pdf.Core.Models.SourceGenerationContext.Default.ListPDfBookmark);
                     Console.WriteLine(jsonString);
                 }
 
@@ -377,7 +380,7 @@ public class CommandsHandler : BaseCommandHandler
 
             using var operation = _logger.BeginScope("InfoCommand");
             
-            var pdfInfo = Pdfium.GetPdfInformation(input.FullName, password ?? "");
+            var pdfInfo = _pdfProcessor.GetPdfInformation(input.FullName, password ?? "");
 
             if (pdfInfo is not null)
             {
@@ -398,7 +401,7 @@ public class CommandsHandler : BaseCommandHandler
                 else if (outputFormat.ToLower() == "json")
                 {
                     var jsonString = JsonSerializer.Serialize(
-                        pdfInfo, SourceGenerationContext.Default.PdfInfo);
+                        pdfInfo, DotNet.Pdf.Core.Models.SourceGenerationContext.Default.PdfInfo);
                     Console.WriteLine(jsonString);
                 }
 
@@ -438,7 +441,7 @@ public class CommandsHandler : BaseCommandHandler
             _logger.LogInformation("Rotating pages in PDF: {InputFile} -> {OutputFile}", input.FullName, output.FullName);
             Console.WriteLine($"Rotating pages in PDF: {input.Name} -> {output.Name}");
 
-            Pdfium.RotatePdfPages(input.FullName, output.FullName, rotation, pageRange, password ?? "");
+            _pdfProcessor.RotatePdfPages(input.FullName, output.FullName, rotation, pageRange, password ?? "");
 
             _logger.LogInformation("Successfully rotated PDF pages");
             Console.WriteLine("PDF pages rotated successfully");
@@ -477,7 +480,7 @@ public class CommandsHandler : BaseCommandHandler
             _logger.LogInformation("Removing pages from PDF: {InputFile} -> {OutputFile}", input.FullName, output.FullName);
             Console.WriteLine($"Removing pages from PDF: {input.Name} -> {output.Name}");
 
-            Pdfium.RemovePdfPages(input.FullName, output.FullName, pagesToRemove, password ?? "");
+            _pdfProcessor.RemovePdfPages(input.FullName, output.FullName, pagesToRemove, password ?? "");
 
             _logger.LogInformation("Successfully removed PDF pages");
             Console.WriteLine("PDF pages removed successfully");
@@ -516,7 +519,7 @@ public class CommandsHandler : BaseCommandHandler
             _logger.LogInformation("Inserting blank pages into PDF: {InputFile} -> {OutputFile}", input.FullName, output.FullName);
             Console.WriteLine($"Inserting blank pages into PDF: {input.Name} -> {output.Name}");
 
-            Pdfium.InsertBlankPages(input.FullName, output.FullName, insertPositions, pageWidth, pageHeight, password ?? "");
+            _pdfProcessor.InsertBlankPages(input.FullName, output.FullName, insertPositions, pageWidth, pageHeight, password ?? "");
 
             _logger.LogInformation("Successfully inserted blank pages");
             Console.WriteLine("Blank pages inserted successfully");
@@ -555,7 +558,7 @@ public class CommandsHandler : BaseCommandHandler
             _logger.LogInformation("Reordering pages in PDF: {InputFile} -> {OutputFile}", input.FullName, output.FullName);
             Console.WriteLine($"Reordering pages in PDF: {input.Name} -> {output.Name}");
 
-            Pdfium.ReorderPdfPages(input.FullName, output.FullName, pageOrder, password ?? "");
+            _pdfProcessor.ReorderPdfPages(input.FullName, output.FullName, pageOrder, password ?? "");
 
             _logger.LogInformation("Successfully reordered PDF pages");
             Console.WriteLine("PDF pages reordered successfully");
@@ -579,7 +582,7 @@ public class CommandsHandler : BaseCommandHandler
             _logger.LogInformation("Listing attachments from PDF: {InputFile}", input.FullName);
             Console.WriteLine($"Listing attachments from PDF: {input.Name}");
 
-            var attachments = Pdfium.GetPdfAttachments(input.FullName, password ?? "");
+            var attachments = _pdfProcessor.GetPdfAttachments(input.FullName, password ?? "");
 
             if (attachments == null)
             {
@@ -597,7 +600,7 @@ public class CommandsHandler : BaseCommandHandler
             switch (outputFormat.ToLowerInvariant())
             {
                 case "json":
-                    var jsonText = JsonSerializer.Serialize(attachments, SourceGenerationContext.Default.ListPdfAttachment);
+                    var jsonText = JsonSerializer.Serialize(attachments, DotNet.Pdf.Core.Models.SourceGenerationContext.Default.ListPdfAttachment);
                     Console.WriteLine(jsonText);
                     break;
                 case "text":
@@ -654,7 +657,7 @@ public class CommandsHandler : BaseCommandHandler
             Console.WriteLine($"Extracting attachments from PDF: {input.Name} to {validOutputDir.Name}");
 
             // First, get the list of attachments
-            var attachments = Pdfium.GetPdfAttachments(input.FullName, password ?? "");
+            var attachments = _pdfProcessor.GetPdfAttachments(input.FullName, password ?? "");
 
             if (attachments == null || !attachments.Any())
             {
@@ -672,7 +675,7 @@ public class CommandsHandler : BaseCommandHandler
                     var attachment = attachments[index];
                     var outputPath = Path.Combine(validOutputDir.FullName, IoUtils.RemoveInvalidChars(attachment.Name));
                     
-                    if (Pdfium.ExtractAttachment(input.FullName, index, outputPath, password ?? ""))
+                    if (_pdfProcessor.ExtractAttachment(input.FullName, index, outputPath, password ?? ""))
                     {
                         Console.WriteLine($"Successfully extracted: {attachment.Name} ({attachment.Size:N0} bytes)");
                         extractedCount = 1;
@@ -696,7 +699,7 @@ public class CommandsHandler : BaseCommandHandler
                     var attachment = attachments[i];
                     var outputPath = Path.Combine(validOutputDir.FullName, IoUtils.RemoveInvalidChars(attachment.Name));
                     
-                    if (Pdfium.ExtractAttachment(input.FullName, i, outputPath, password ?? ""))
+                    if (_pdfProcessor.ExtractAttachment(input.FullName, i, outputPath, password ?? ""))
                     {
                         Console.WriteLine($"Extracted: {attachment.Name} ({attachment.Size:N0} bytes)");
                         extractedCount++;
@@ -765,6 +768,51 @@ public class CommandsHandler : BaseCommandHandler
         }
 
         return result;
+    }
+
+    #endregion
+
+    #region PDF Security Operations
+
+    /// <summary>
+    /// Unlocks a password-protected PDF document by removing security restrictions
+    /// </summary>
+    /// <param name="input">The input password-protected PDF file</param>
+    /// <param name="output">The output file where the unlocked PDF will be saved</param>
+    /// <param name="password">The password required to open the input PDF</param>
+    public void UnlockPdf(FileInfo input, FileInfo output, string password)
+    {
+        try
+        {
+            if (!ValidateInputFile(input, "unlock PDF")) return;
+
+            if (output == null)
+            {
+                _logger.LogError("Output file is required for unlock operation");
+                Console.WriteLine("Error: Output file is required for unlock operation");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                _logger.LogError("Password is required for unlock operation");
+                Console.WriteLine("Error: Password is required for unlock operation");
+                return;
+            }
+
+            _logger.LogInformation("Unlocking PDF: {InputFile} -> {OutputFile}", input.FullName, output.FullName);
+            Console.WriteLine($"Unlocking PDF: {input.Name} -> {output.Name}");
+
+            _pdfProcessor.UnlockPdf(input.FullName, output.FullName, password);
+
+            _logger.LogInformation("Successfully unlocked PDF");
+            Console.WriteLine("PDF unlocked successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error unlocking PDF from file: {FileName}", input?.FullName);
+            Console.WriteLine($"Error: Failed to unlock PDF - {ex.Message}");
+        }
     }
 
     #endregion

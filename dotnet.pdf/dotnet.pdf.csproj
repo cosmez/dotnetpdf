@@ -1,5 +1,4 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <TargetFrameworks>net6.0;net8.0;net9.0</TargetFrameworks>
@@ -11,11 +10,14 @@
         <PackAsTool>true</PackAsTool>
         <ToolCommandName>dotnetpdf</ToolCommandName>
         <PackageOutputPath>./scripts/output/nupkg</PackageOutputPath>
+        <Version>1.5</Version>
     </PropertyGroup>
 
     <PropertyGroup>
         <PackageDescription>DotNetPdf  [merge, split, convert, extract PDF documents]</PackageDescription>
-        <PackageReleaseNotes>Initial Version, SEE README</PackageReleaseNotes>
+        <PackageReleaseNotes>
+            A wide range of new commands have been added to the CLI, including watermarking, listing page objects, and form fields. 
+        </PackageReleaseNotes>
         <PackageProjectUrl>https://github.com/cosmez/dotnetpdf</PackageProjectUrl>
         <Authors>Cosme Zamudio</Authors>
         <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
@@ -27,13 +29,14 @@
 
 
     <ItemGroup>
-      <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.660" />
       <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
       <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
       <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
-      <PackageReference Include="PDFiumCore" Version="134.0.6982" />
-      <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
       <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\DotNet.Pdf.Core\DotNet.Pdf.Core.csproj" />
     </ItemGroup>
 
 </Project>

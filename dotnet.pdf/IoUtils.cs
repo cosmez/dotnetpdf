@@ -1,9 +1,4 @@
 ﻿using System.Text;
-using SixLabors.ImageSharp.Formats;
-using SixLabors.ImageSharp.Formats.Bmp;
-using SixLabors.ImageSharp.Formats.Gif;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.Formats.Png;
 
 namespace dotnet.pdf;
 
@@ -42,49 +37,5 @@ public class IoUtils
         }
 
         return nameBuilder.ToString();
-    }
-
-    /// <summary>
-    /// Returns an image encoder based on the provided file extension.
-    /// </summary>
-    /// <param name="fileName">The name of the file.</param>
-    /// <returns>An instance of an image encoder.</returns>
-    /// <exception cref="NotSupportedException">Thrown if the file extension is not supported.</exception>
-    public static IImageEncoder GetEncoder(string fileName)
-    {
-        string extension = Path.GetExtension(fileName).ToLowerInvariant();
-        switch (extension)
-        {
-            case ".png":
-                return new PngEncoder();
-            case ".jpg":
-            case ".jpeg":
-                return new JpegEncoder();
-            case ".gif":
-                return new GifEncoder();
-            case ".bmp":
-                return new BmpEncoder();
-            default:
-                throw new NotSupportedException($"File extension {extension} is not supported");
-        }
-    }
-
-    /// <summary>
-    /// Gets the file extension based on the given image encoder.
-    /// </summary>
-    /// <param name="encoder">The image encoder to get the file extension for.</param>
-    /// <returns>The file extension for the specified image encoder.</returns>
-    public static string GetExtension(IImageEncoder encoder)
-    {
-        if (encoder is PngEncoder)
-            return ".png";
-        else if (encoder is JpegEncoder)
-            return ".jpg";
-        else if (encoder is GifEncoder)
-            return ".gif";
-        else if (encoder is BmpEncoder)
-            return ".bmp";
-        else
-            throw new NotSupportedException($"Encoder type is not supported");
     }
 }
