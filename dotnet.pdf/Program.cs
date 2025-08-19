@@ -11,6 +11,7 @@ class Program
     private static ServiceProvider _serviceProvider = null!;
     private static CommandsHandler _commandHandler = null!;
     private static MoreCommandsHandler _moreCommandHandler = null!;
+    private static McpCommandHandler _mcpCommandHandler = null!;
 
     static async Task<int> Main(string[] args)
     {
@@ -18,7 +19,7 @@ class Program
         _serviceProvider = ConfigureServices();
         _commandHandler = _serviceProvider.GetService<CommandsHandler>()!;
         _moreCommandHandler = _serviceProvider.GetService<MoreCommandsHandler>()!;
-
+        _mcpCommandHandler = _serviceProvider.GetService<McpCommandHandler>()!;
         try
         {
             var rootCommand = new RootCommand($"DotNet.Pdf {Version} [merge, split, convert, extract PDF documents and pages]");
@@ -82,10 +83,23 @@ class Program
             return new CommandsHandler(logger, loggerFactory);
         });
         services.AddSingleton<MoreCommandsHandler>();
+        services.AddSingleton<McpCommandHandler>();
         return services.BuildServiceProvider();
     }
 
     #region Command Configuration Methods
+
+    private static void ConfigureMcpCommand(RootCommand rootCommand)
+    {
+        var mcpCommand = new Command("mcp", "Starts an MCP Server that offers MCP Manipulation tool to AI Agents");
+
+        mcpCommand.SetHandler(async () =>
+        {
+            await _mcpCommandHandler.StartMcpServerAsync();
+        });
+
+        rootCommand.AddCommand(mcpCommand);
+    }
 
     private static void ConfigureSplitCommand(RootCommand rootCommand)
     {
